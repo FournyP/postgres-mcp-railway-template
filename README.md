@@ -2,7 +2,7 @@
 
 Deploys [Postgres MCP Pro](https://github.com/crystaldba/postgres-mcp) — an MCP server that gives AI agents database health checks, query plan analysis, and index tuning over any Postgres database — behind an NGINX bearer-token auth gateway.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/postgres-mcp?referralCode=C3Uv6n&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## 🏗️ Architecture
 
