@@ -20,6 +20,13 @@ http {
       return 200 "ok\n";
     }
 
+    # MCP clients probe OAuth discovery before falling back to static bearer auth.
+    # Return 404 so they skip OAuth and use the configured Authorization header.
+    location = /.well-known/oauth-protected-resource { access_log off; return 404; }
+    location = /.well-known/oauth-authorization-server { access_log off; return 404; }
+    location = /.well-known/openid-configuration { access_log off; return 404; }
+    location = /register { access_log off; return 404; }
+
     location / {
       if ($auth_ok = 0) {
         add_header WWW-Authenticate 'Bearer realm="postgres-mcp"' always;
