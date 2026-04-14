@@ -20,34 +20,52 @@ http {
       return 200 "ok\n";
     }
 
-    # MCP clients probe OAuth discovery before falling back to static bearer auth.
-    # Return 404 so they skip OAuth and use the configured Authorization header.
-    location = /.well-known/oauth-protected-resource { access_log off; return 404; }
-    location = /.well-known/oauth-authorization-server { access_log off; return 404; }
-    location = /.well-known/openid-configuration { access_log off; return 404; }
-    location = /register { access_log off; return 404; }
+    # Return JSON 404 on OAuth discovery probes so clients fall back to bearer
+    # auth. Regex catches every variant (bare, /.well-known/.../mcp, /mcp/.well-known/...).
+    location ~ /\.well-known/ {
+      access_log off;
+      default_type application/json;
+      return 404 '{"error":"not_found"}';
+    }
+    location = /register {
+      access_log off;
+      default_type application/json;
+      return 404 '{"error":"not_found"}';
+    }
 
     location / {
       if ($auth_ok = 0) {
         add_header WWW-Authenticate 'Bearer realm="postgres-mcp"' always;
-        return 401;
+        add_header Content-Type 'application/json' always;
+        return 401 '{"error":"unauthorized"}';
       }
 
+      # `set` must precede `rewrite ... break` — `break` halts later rewrite-phase
+      # directives, leaving $upstream empty and breaking proxy_pass.
       set $upstream "http://${MCP_HOST}:${MCP_PORT}";
+
+      # Strip trailing slash so FastMCP doesn't 307 to /mcp (some clients drop
+      # Authorization on redirect).
+      rewrite ^/mcp/$ /mcp break;
+
       proxy_http_version 1.1;
       proxy_set_header Connection "";
 
-      # SSE / streamable HTTP
+      # Long-lived streaming responses.
       proxy_buffering off;
       proxy_cache off;
       proxy_read_timeout 1h;
       proxy_send_timeout 1h;
 
-      proxy_set_header Host $host;
+      # MCP SDK auto-enables DNS-rebinding protection with allowlist
+      # ["127.0.0.1:*", "localhost:*", "[::1]:*"]. Host must match a pattern
+      # (port required); bearer auth is the real security boundary.
+      proxy_set_header Host "127.0.0.1:${MCP_PORT}";
+      proxy_set_header X-Forwarded-Host $host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
 
-      proxy_pass $upstream$request_uri;
+      proxy_pass $upstream$uri$is_args$args;
     }
   }
 }

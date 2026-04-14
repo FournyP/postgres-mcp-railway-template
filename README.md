@@ -15,13 +15,13 @@ client ──Authorization: Bearer <key>──► gateway (nginx, public)
 
 Two Railway services:
 
-- **`gateway`** — `nginx:alpine`, exposes a public domain, validates the `Authorization: Bearer <key>` header against `API_KEYS`, and forwards SSE traffic to the mcp service via Railway's private network.
-- **`mcp`** — pinned to `crystaldba/postgres-mcp:0.3.0`. **Do not give this service a public domain**; it is only reachable at `mcp.railway.internal:8000`.
+- **`gateway`** — `nginx:alpine`, exposes a public domain, validates the `Authorization: Bearer <key>` header against `API_KEYS`, and forwards streamable-HTTP traffic to the mcp service via Railway's private network.
+- **`mcp`** — built from the upstream source at a pinned commit (see `mcp/Dockerfile`). Uses `--transport=streamable-http`; the legacy `sse` transport in the `0.3.0` release triggers an init-ordering race that hangs clients. **Do not give this service a public domain**; it is only reachable at `mcp.railway.internal:8000`.
 
 ## ✨ Features
 
 - Bearer-token auth with a comma-separated allowlist of keys
-- SSE passthrough (`/sse`, `/messages/...`)
+- Streamable HTTP passthrough (`/mcp/`)
 - Unauthenticated `/health` on the gateway for Railway healthchecks
 - SQL-level access mode (`restricted` by default) as defense-in-depth on top of the network-level bearer auth
 - Zero custom code — gateway is plain nginx, mcp is the upstream prebuilt image
@@ -31,9 +31,13 @@ Two Railway services:
 1. Click the Railway button 👆
 2. Fill in the variables (see below)
 3. Deploy! 🚄
-4. Point your MCP client at `https://<gateway-domain>/sse` with header `Authorization: Bearer <your-key>`. Quick check:
+4. Point your MCP client at `https://<gateway-domain>/mcp/` (streamable-HTTP, `"type": "http"`) with header `Authorization: Bearer <your-key>`. Quick check:
    ```bash
-   curl -N -H "Authorization: Bearer <your-key>" https://<gateway-domain>/sse
+   curl -sS -X POST https://<gateway-domain>/mcp/ \
+     -H "Authorization: Bearer <your-key>" \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json, text/event-stream" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
    ```
 
 ## 🔧 Variables
@@ -68,5 +72,4 @@ Postgres-mcp upstream has **no built-in client authentication** of its own (veri
 - **`/health` is unauthenticated** so Railway (and any uptime monitor) can probe without a token. Everything else requires `Authorization: Bearer <key>`.
 - **Invalid / missing token:** the gateway returns `401` with a `WWW-Authenticate: Bearer realm="postgres-mcp"` header.
 - **Do not expose the mcp service publicly.** All traffic should enter through the gateway.
-- Upstream image: `crystaldba/postgres-mcp:0.3.0` (Docker Hub)
-- Source: https://github.com/crystaldba/postgres-mcp
+- Upstream source: https://github.com/crystaldba/postgres-mcp — built at a pinned SHA via `ARG POSTGRES_MCP_SHA` in `mcp/Dockerfile`. Bump the SHA to pick up upstream changes.

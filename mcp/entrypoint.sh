@@ -4,8 +4,8 @@ set -e
 ACCESS_MODE="${ACCESS_MODE:-restricted}"
 PORT="${PORT:-8000}"
 
-exec /app/docker-entrypoint.sh postgres-mcp \
-  --transport=sse \
-  --sse-host=0.0.0.0 \
-  --sse-port="${PORT}" \
+exec postgres-mcp \
+  --transport=streamable-http \
+  --streamable-http-host=0.0.0.0 \
+  --streamable-http-port="${PORT}" \
   --access-mode="${ACCESS_MODE}"
