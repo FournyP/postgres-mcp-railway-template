@@ -73,3 +73,7 @@ Postgres-mcp upstream has **no built-in client authentication** of its own (veri
 - **Invalid / missing token:** the gateway returns `401` with a `WWW-Authenticate: Bearer realm="postgres-mcp"` header.
 - **Do not expose the mcp service publicly.** All traffic should enter through the gateway.
 - Upstream source: https://github.com/crystaldba/postgres-mcp — built at a pinned SHA via `ARG POSTGRES_MCP_SHA` in `mcp/Dockerfile`. Bump the SHA to pick up upstream changes.
+
+## ⚖️ License
+
+[MIT](LICENSE)
