@@ -24,6 +24,7 @@ Two Railway services:
 - Streamable HTTP passthrough (`/mcp/`)
 - Unauthenticated `/health` (and `/healthz`) on the gateway for Railway healthchecks
 - SQL-level access mode (`restricted` by default) as defense-in-depth on top of the network-level bearer auth
+- Optional URL-embedded key, for MCP clients that cannot send an auth header
 - Zero custom code — gateway is plain nginx, mcp is the upstream prebuilt image
 
 ## 💁‍♀️ How to use
@@ -49,6 +50,7 @@ Two Railway services:
 | `API_KEYS` | yes | Comma-separated list of allowed bearer tokens. Allowed chars per key: `A-Z a-z 0-9 . _ ~ + / = -` |
 | `MCP_HOST` | no | Defaults to `mcp.railway.internal`. Only override if you rename the mcp service. |
 | `MCP_PORT` | no | Defaults to `8000`. |
+| `PATH_KEY_AUTH` | no | `true` also accepts the key in the URL as `/k/<key>/mcp` (see below). Default `false`. |
 
 ### MCP service
 
@@ -57,6 +59,44 @@ Two Railway services:
 | `DATABASE_URI` | yes | Postgres connection string, e.g. `postgresql://user:pass@host:5432/dbname` |
 | `ACCESS_MODE` | no | `restricted` (default) — read-only transactions with execution-time limits. Set to `unrestricted` for full read/write. |
 | `OPENAI_API_KEY` | no | Enables postgres-mcp's experimental LLM-based index tuning. |
+
+## 🔑 Key in the URL instead of the header (opt-in)
+
+Normally a client proves itself with a header: `Authorization: Bearer <key>`.
+
+A few MCP clients ask a server "what tools do you have?" *before* the user has
+typed a key into them. That request goes out with no header, the gateway
+correctly returns `401`, and the client reports the server as broken — so the
+user never reaches the screen where they would enter the key.
+
+Setting `PATH_KEY_AUTH=true` lets the same key ride in the URL instead, so a
+client that can only store a URL can still get in:
+
+```
+https://<gateway-domain>/k/<your-key>/mcp
+```
+
+The key is checked against the same `API_KEYS` list, then stripped — the mcp
+service only ever sees `/mcp`. A missing or wrong key is still `401`, and a
+valid key opens nothing but `/mcp`:
+
+| Request | Result |
+| --- | --- |
+| `/k/<valid-key>/mcp` | proxied to the mcp service |
+| `/k/<wrong-key>/mcp` | `401` |
+| `/k//mcp` | `401` |
+| `/k/<valid-key>/tools` | `401` |
+
+**This is weaker than the header, which is why it is off by default.** Headers
+are not usually logged; URLs are — by Railway's edge, by any CDN or proxy in
+between, by browser history. It is the same secret in more places you do not
+control. So:
+
+- Turn it on only if a client actually needs it.
+- Give that client its **own key** in `API_KEYS`, so you can rotate just that
+  one if it leaks.
+- Keys used this way cannot contain `/` (the header form allows it), since a
+  slash would split the path segment.
 
 ## 🔒 Two layers of protection
 

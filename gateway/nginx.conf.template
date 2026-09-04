@@ -40,6 +40,10 @@ http {
       return 404 '{"error":"not_found"}';
     }
 
+    # Keyed-path entrypoint, rendered only when PATH_KEY_AUTH is enabled;
+    # otherwise this file is empty. See docker-entrypoint.d/10-render-config.sh.
+    include /etc/nginx/path-key.conf;
+
     location / {
       if ($auth_ok = 0) {
         add_header WWW-Authenticate 'Bearer realm="postgres-mcp"' always;

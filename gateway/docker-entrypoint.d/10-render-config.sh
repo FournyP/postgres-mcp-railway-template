@@ -5,6 +5,7 @@ set -eu
 : "${MCP_HOST:=mcp.railway.internal}"
 : "${MCP_PORT:=8000}"
 : "${PORT:=80}"
+: "${PATH_KEY_AUTH:=false}"
 
 # Validate each key. Keys are interpolated into an nginx map regex, so we
 # restrict to characters that are safe inside a regex alternation group.
@@ -39,6 +40,19 @@ export RESOLVER
 
 export MCP_HOST MCP_PORT PORT
 
-envsubst '${API_KEY_PATTERN} ${RESOLVER} ${MCP_HOST} ${MCP_PORT} ${PORT}' \
-  < /etc/nginx/nginx.conf.template \
-  > /etc/nginx/nginx.conf
+VARS='${API_KEY_PATTERN} ${RESOLVER} ${MCP_HOST} ${MCP_PORT} ${PORT}'
+
+envsubst "$VARS" < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+
+# nginx has no config-level conditionals, so the keyed-path block is gated
+# here instead. The main config includes /etc/nginx/path-key.conf
+# unconditionally, so the file must exist either way — empty when disabled.
+case "$PATH_KEY_AUTH" in
+  1|true|TRUE|True|yes|YES)
+    echo "gateway: keyed-path entrypoint enabled (/k/<key>/mcp)" >&2
+    envsubst "$VARS" < /etc/nginx/path-key.conf.template > /etc/nginx/path-key.conf
+    ;;
+  *)
+    : > /etc/nginx/path-key.conf
+    ;;
+esac
