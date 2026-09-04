@@ -22,7 +22,7 @@ Two Railway services:
 
 - Bearer-token auth with a comma-separated allowlist of keys
 - Streamable HTTP passthrough (`/mcp/`)
-- Unauthenticated `/health` on the gateway for Railway healthchecks
+- Unauthenticated `/health` (and `/healthz`) on the gateway for Railway healthchecks
 - SQL-level access mode (`restricted` by default) as defense-in-depth on top of the network-level bearer auth
 - Zero custom code — gateway is plain nginx, mcp is the upstream prebuilt image
 
@@ -69,7 +69,7 @@ Postgres-mcp upstream has **no built-in client authentication** of its own (veri
 
 - **Generate strong keys:** `openssl rand -hex 32`
 - **Rotating a key:** update `API_KEYS` on the gateway service and redeploy it. The mcp service is untouched.
-- **`/health` is unauthenticated** so Railway (and any uptime monitor) can probe without a token. Everything else requires `Authorization: Bearer <key>`.
+- **`/health` and `/healthz` are unauthenticated** so Railway (and any uptime monitor) can probe without a token. Everything else requires `Authorization: Bearer <key>`.
 - **Invalid / missing token:** the gateway returns `401` with a `WWW-Authenticate: Bearer realm="postgres-mcp"` header.
 - **Do not expose the mcp service publicly.** All traffic should enter through the gateway.
 - Upstream source: https://github.com/crystaldba/postgres-mcp — built at a pinned SHA via `ARG POSTGRES_MCP_SHA` in `mcp/Dockerfile`. Bump the SHA to pick up upstream changes.

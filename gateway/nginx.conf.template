@@ -20,6 +20,13 @@ http {
       return 200 "ok\n";
     }
 
+    # Same thing under the other common spelling, so a healthcheck path
+    # configured either way works without editing this file.
+    location = /healthz {
+      access_log off;
+      return 200 "ok\n";
+    }
+
     # Return JSON 404 on OAuth discovery probes so clients fall back to bearer
     # auth. Regex catches every variant (bare, /.well-known/.../mcp, /mcp/.well-known/...).
     location ~ /\.well-known/ {
