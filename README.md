@@ -7,16 +7,16 @@ Deploys [Postgres MCP Pro](https://github.com/crystaldba/postgres-mcp) — an MC
 ## 🏗️ Architecture
 
 ```
-client ──Authorization: Bearer <key>──► gateway (nginx, public)
+client ──Authorization: Bearer <key>──► postgres-mcp-gateway (nginx, public)
                                               │
                                               ▼ private network
-                                        mcp (postgres-mcp, private) ──► Postgres
+                                    postgres-mcp (private) ──► Postgres
 ```
 
 Two Railway services:
 
-- **`gateway`** — `nginx:alpine`, exposes a public domain, validates the `Authorization: Bearer <key>` header against `API_KEYS`, and forwards streamable-HTTP traffic to the mcp service via Railway's private network.
-- **`mcp`** — built from the upstream source at a pinned commit (see `mcp/Dockerfile`). Uses `--transport=streamable-http`; the legacy `sse` transport in the `0.3.0` release triggers an init-ordering race that hangs clients. **Do not give this service a public domain**; it is only reachable at `mcp.railway.internal:8000`.
+- **`postgres-mcp-gateway`** — `nginx:1.29.8-alpine`, exposes a public domain, validates the `Authorization: Bearer <key>` header against `API_KEYS`, and forwards streamable-HTTP traffic to the mcp service via Railway's private network.
+- **`postgres-mcp`** — built from the upstream source at a pinned commit (see `mcp/Dockerfile`). Uses `--transport=streamable-http`; the legacy `sse` transport in the `0.3.0` release triggers an init-ordering race that hangs clients. **Do not give this service a public domain**; it is only reachable at `postgres-mcp.railway.internal:8000`.
 
 ## ✨ Features
 
@@ -48,7 +48,7 @@ Two Railway services:
 | Variable | Required | Description |
 | --- | --- | --- |
 | `API_KEYS` | yes | Comma-separated list of allowed bearer tokens. Allowed chars per key: `A-Z a-z 0-9 . _ ~ + / = -` |
-| `MCP_HOST` | no | Defaults to `mcp.railway.internal`. Only override if you rename the mcp service. |
+| `MCP_HOST` | no | Defaults to `postgres-mcp.railway.internal`. Only override if you rename the mcp service. |
 | `MCP_PORT` | no | Defaults to `8000`. |
 | `PATH_KEY_AUTH` | no | `true` also accepts the key in the URL as `/k/<key>/mcp` (see below). Default `false`. |
 
