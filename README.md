@@ -21,7 +21,7 @@ Two Railway services:
 ## ✨ Features
 
 - Bearer-token auth with a comma-separated allowlist of keys
-- Streamable HTTP passthrough (`/mcp/`)
+- Streamable HTTP passthrough (`/mcp`)
 - Unauthenticated `/health` (and `/healthz`) on the gateway for Railway healthchecks
 - SQL-level access mode (`restricted` by default) as defense-in-depth on top of the network-level bearer auth
 - Optional URL-embedded key, for MCP clients that cannot send an auth header
@@ -32,13 +32,18 @@ Two Railway services:
 1. Click the Railway button 👆
 2. Fill in the variables (see below)
 3. Deploy! 🚄
-4. Point your MCP client at `https://<gateway-domain>/mcp/` (streamable-HTTP, `"type": "http"`) with header `Authorization: Bearer <your-key>`. Quick check:
+4. Point your MCP client at `https://<gateway-domain>/mcp` (streamable-HTTP, `"type": "http"`) with header `Authorization: Bearer <your-key>`. Quick check:
    ```bash
-   curl -sS -X POST https://<gateway-domain>/mcp/ \
+   curl -sS -X POST https://<gateway-domain>/mcp \
      -H "Authorization: Bearer <your-key>" \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+   ```
+   With Claude Code:
+   ```bash
+   claude mcp add postgres --transport http https://<gateway-domain>/mcp \
+     --header "Authorization: Bearer <your-key>"
    ```
 
 ## 🧱 Infrastructure as Code
