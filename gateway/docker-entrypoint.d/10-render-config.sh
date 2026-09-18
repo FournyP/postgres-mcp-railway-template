@@ -8,8 +8,9 @@ set -eu
 : "${PATH_KEY_AUTH:=false}"
 
 # Validate each key. Keys are interpolated into an nginx map regex, so we
-# restrict to characters that are safe inside a regex alternation group.
+# restrict to characters that cannot break out of an alternation group.
 # Allowed: A-Z a-z 0-9 . _ ~ + / = -   (covers base64, base64url, hex, UUID)
+# "." and "+" are still regex metacharacters and get escaped below.
 echo "$API_KEYS" | tr ',' '\n' | while IFS= read -r key; do
   [ -z "$key" ] && continue
   case "$key" in
@@ -20,7 +21,9 @@ echo "$API_KEYS" | tr ',' '\n' | while IFS= read -r key; do
   esac
 done
 
-API_KEY_PATTERN=$(echo "$API_KEYS" | tr ',' '\n' | sed '/^$/d' | paste -sd '|' -)
+# Escape "." and "+" so a key like "abc.def" only matches itself, not "abcXdef".
+# Nothing else in the allowed charset is special inside a PCRE group.
+API_KEY_PATTERN=$(echo "$API_KEYS" | tr ',' '\n' | sed '/^$/d' | sed 's/[.+]/\\&/g' | paste -sd '|' -)
 if [ -z "$API_KEY_PATTERN" ]; then
   echo "gateway: API_KEYS must contain at least one non-empty key" >&2
   exit 1

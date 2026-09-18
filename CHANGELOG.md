@@ -4,6 +4,14 @@ Notable changes to this template. Entries are named after the change they ship, 
 the template pins Postgres MCP Pro to a commit rather than a release. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Exact key matching — 2026-09-18
+
+### Fixed
+
+- The gateway escapes `.` and `+` before building its bearer-key regex. Both are allowed in
+  `API_KEYS` and both are PCRE metacharacters, so a key such as `abc.def` also admitted
+  `abcXdef`. Keys from `openssl rand -hex 32` were never affected.
+
 ## Infrastructure as Code — 2026-09-06
 
 ### Added
