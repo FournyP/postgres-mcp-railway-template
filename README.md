@@ -147,6 +147,7 @@ Postgres-mcp upstream has **no built-in client authentication** of its own (veri
 - **`/health` and `/healthz` are unauthenticated** so Railway (and any uptime monitor) can probe without a token. Everything else requires `Authorization: Bearer <key>`.
 - **Invalid / missing token:** the gateway returns `401` with a `WWW-Authenticate: Bearer realm="postgres-mcp"` header.
 - **Do not expose the mcp service publicly.** All traffic should enter through the gateway.
+- **Gateway port:** nginx listens on `PORT`, which the IaC file pins to `80`. Railway injects a random `PORT` when the variable is unset, so if you create the gateway by hand and give its domain an explicit target port, set `PORT` to match or the edge gets `connection refused`.
 - Upstream source: https://github.com/crystaldba/postgres-mcp — built at a pinned SHA via `ARG POSTGRES_MCP_SHA` in `mcp/Dockerfile`. Bump the SHA to pick up upstream changes.
 
 ## ⚖️ License
