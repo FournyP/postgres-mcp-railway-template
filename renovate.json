@@ -3,6 +3,9 @@
   "extends": [
     "config:recommended"
   ],
+  "reviewers": [
+    "FournyP"
+  ],
   "customManagers": [
     {
       "customType": "regex",
