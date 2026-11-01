@@ -20,6 +20,24 @@
   ],
   "packageRules": [
     {
+      "description": "Minor and patch updates automerge once every check passes. ghcr.io publishes no release timestamps, so those are not held forever.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "minimumReleaseAge": "1 day",
+      "minimumReleaseAgeBehaviour": "timestamp-optional",
+      "automerge": true
+    },
+    {
+      "description": "Exception: on 0.x a minor bump can break, so it needs a human.",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "matchCurrentVersion": "/^v?0\\./",
+      "automerge": false
+    },
+    {
       "description": "The runtime stage runs a venv built by the uv builder image, whose tag Renovate cannot parse. Bump both stages together by hand.",
       "matchPackageNames": [
         "python"
