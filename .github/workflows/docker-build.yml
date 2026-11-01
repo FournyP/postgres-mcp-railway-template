@@ -1,5 +1,6 @@
 # Builds both images this template ships (gateway and mcp) on every PR and on
-# main, and exercises the gateway's runtime-rendered nginx config.
+# main, boots the mcp server against a real Postgres, and exercises the
+# gateway's runtime-rendered nginx config.
 name: docker-build
 
 on:
@@ -28,6 +29,137 @@ jobs:
           load: false
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # A successful image build says nothing about the server starting, reaching
+  # the database or honouring ACCESS_MODE, so this job boots the real mcp image
+  # against a seeded Postgres and drives it over MCP: read the seeded row, and
+  # check a write is refused in restricted mode but lands in unrestricted mode.
+  mcp-boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build mcp image locally
+        uses: docker/build-push-action@v7
+        with:
+          context: mcp
+          push: false
+          load: true
+          tags: mcp:ci
+          cache-from: type=gha,scope=mcp
+
+      - name: Start Postgres with a seeded table
+        run: |
+          set -eu
+          docker network create ci-net
+          docker run -d --name db --network ci-net \
+            -e POSTGRES_USER=ci \
+            -e POSTGRES_PASSWORD=cipassword \
+            -e POSTGRES_DB=cidb \
+            postgres:18.6-alpine
+          # Probe over TCP: during first-run init the image serves the unix
+          # socket only, then restarts, so a socket probe can pass too early.
+          for i in $(seq 1 60); do
+            docker exec db pg_isready -h 127.0.0.1 -U ci -d cidb >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec db psql -v ON_ERROR_STOP=1 -U ci -d cidb -c "
+            CREATE TABLE ci_greetings (id int PRIMARY KEY, message text NOT NULL);
+            INSERT INTO ci_greetings VALUES (1, 'hello from postgres');"
+
+      - name: Start mcp in both access modes
+        run: |
+          set -eu
+          # ACCESS_MODE unset: the entrypoint's default, restricted, is what
+          # the IaC file deploys.
+          docker run -d --name mcp --network ci-net \
+            -e DATABASE_URI=postgresql://ci:cipassword@db:5432/cidb \
+            -e PORT=8000 \
+            -p 8000:8000 mcp:ci
+          docker run -d --name mcp-rw --network ci-net \
+            -e DATABASE_URI=postgresql://ci:cipassword@db:5432/cidb \
+            -e ACCESS_MODE=unrestricted \
+            -e PORT=8000 \
+            -p 8001:8000 mcp:ci
+          # There is no health route; any HTTP answer on /mcp (a 406 to a
+          # plain GET) means uvicorn is up.
+          for port in 8000 8001; do
+            for i in $(seq 1 30); do
+              [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:$port/mcp)" != 000 ] && break
+              sleep 1
+            done
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:$port/mcp)" != 000 ]
+          done
+
+      - name: Assertions
+        run: |
+          set -eu
+          # A response is either plain JSON or SSE; keep only the JSON of the
+          # data lines in the SSE case. Each body is echoed so a failed grep
+          # shows what the server actually said.
+          call() {
+            body=$(curl -sS -D headers.txt -X POST "$URL" \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json, text/event-stream' \
+              ${SESSION:+-H "mcp-session-id: $SESSION"} \
+              -d "$1")
+            if printf '%s\n' "$body" | grep -q '^data: '; then
+              body=$(printf '%s\n' "$body" | sed -n 's/^data: //p')
+            fi
+            printf '%s\n' "$body" | tee -a responses.log
+          }
+          # Opens a session on $URL and leaves its id in $SESSION.
+          connect() {
+            URL=$1 SESSION=
+            call '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+              | grep -q '"serverInfo"'
+            SESSION=$(tr -d '\r' < headers.txt | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}')
+            [ -n "$SESSION" ]
+            curl -sS -o /dev/null -X POST "$URL" \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json, text/event-stream' \
+              -H "mcp-session-id: $SESSION" \
+              -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+          }
+          sql() {
+            call "{\"jsonrpc\":\"2.0\",\"id\":$1,\"method\":\"tools/call\",\"params\":{\"name\":\"execute_sql\",\"arguments\":{\"sql\":\"$2\"}}}"
+          }
+          rows() { docker exec db psql -U ci -d cidb -tAc 'SELECT count(*) FROM ci_greetings'; }
+          insert="INSERT INTO ci_greetings VALUES (2, 'written over mcp')"
+
+          echo "initialize succeeds and opens a session"
+          connect http://localhost:8000/mcp
+
+          echo "the schema and SQL tools are listed"
+          tools=$(call '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
+          for t in list_schemas list_objects execute_sql; do echo "$tools" | grep -q "\"$t\""; done
+
+          echo "list_objects sees the seeded table"
+          call '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_objects","arguments":{"schema_name":"public"}}}' \
+            | grep -q 'ci_greetings'
+
+          echo "execute_sql reads the seeded row"
+          sql 4 'SELECT message FROM ci_greetings WHERE id = 1' | grep -q 'hello from postgres'
+
+          echo "restricted mode refuses a write"
+          # The refusal comes back as text with isError false, so the row
+          # count is the real check.
+          sql 5 "$insert" | grep -q '"text":"Error'
+          [ "$(rows)" = 1 ]
+
+          echo "unrestricted mode lets the same write through"
+          connect http://localhost:8001/mcp
+          if sql 6 "$insert" | grep -q '"text":"Error'; then exit 1; fi
+          [ "$(rows)" = 2 ]
+
+      - name: mcp logs on failure
+        if: failure()
+        run: |
+          cat headers.txt responses.log || true
+          docker logs mcp || true
+          docker logs mcp-rw || true
+          docker logs db || true
 
   # The gateway's nginx config is rendered at container start, not at build
   # time, so a broken template passes the image build and only fails once it
